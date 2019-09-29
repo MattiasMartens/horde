@@ -1,11 +1,11 @@
 
-type HordeTemplate = {
+type RancorTemplate = {
   rawFragments: RawHtml[],
   liveFragments: any[],
   _tag: "horde"
 }
 
-function horde(strings: TemplateStringsArray, ...values: any[]): HordeTemplate {
+function rancor(strings: TemplateStringsArray, ...values: any[]): RancorTemplate {
   return {
     rawFragments: Array.from(strings),
     liveFragments: values,
@@ -15,7 +15,7 @@ function horde(strings: TemplateStringsArray, ...values: any[]): HordeTemplate {
 
 type RawHtml = string;
 
-type Component<W> = (w: W) => RawHtml | HordeTemplate | (RawHtml | HordeTemplate)[];
+type Component<W> = (w: W) => RawHtml | RancorTemplate | (RawHtml | RancorTemplate)[];
 
 type ArgChildFragment<T, V, W> = {
   refiner: (t: T) => V,
@@ -48,7 +48,7 @@ function ChildFragment<T, V, W>(
 const c = ChildFragment;
 
 const myComponent: Component<{a: number, b: string, c: Date}> = function myComponent(data) {
-  return horde`<p>${c(data, {
+  return rancor`<p>${c(data, {
     refiner: ({a, b}) => ({a, b}),
     transformer: ({a, b}) => ({d: a * 2, b}),
     component: myComponent2
@@ -69,11 +69,11 @@ function getChildIfChild(val: any): undefined | ChildFragment<any, any, any> {
   }
 }
 
-function getHordeIfHorde(val: any): undefined | HordeTemplate {
+function getHordeIfHorde(val: any): undefined | RancorTemplate {
   if (val === null || val === undefined) {
     return undefined;
   } else if (val["_tag"] === "child") {
-    return val as HordeTemplate;
+    return val as RancorTemplate;
   } else {
     return undefined;
   }
@@ -99,7 +99,7 @@ function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any)
   }
 }
 
-function renderTemplate(template: RawHtml | HordeTemplate, data: any): string {
+function renderTemplate(template: RawHtml | RancorTemplate, data: any): string {
   const asHorde = getHordeIfHorde(template);
   if (!!asHorde) {
     const {
@@ -147,3 +147,9 @@ function makeRenderer<W>(rootComponent: Component<W>, data: W): () => RawHtml {
     );
   }
 }
+
+console.log(makeRenderer(myComponent, {
+  a: 7,
+  b: "!",
+  c: new Date(10000000)
+})())
