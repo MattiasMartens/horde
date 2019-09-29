@@ -1,92 +1,133 @@
-import {Swarm} from "./tag";
 
-export type Component<T> = {
-  root: ReturnType<Swarm<T>>,
-  renderers?: {
-    [P in keyof T]?: (v: T[P]) => string | Component<T[P]> | (T[P] extends (infer Q)[] ? (string | Component<Q>)[] : never)
-  }
+export type RancorTemplate = {
+  rawFragments: RawHtml[],
+  liveFragments: any[],
+  _tag: "rancor"
 }
 
-type StringOnlyRecord<V> = { [key: string]: V };
-
-type Renderable<T extends StringOnlyRecord<any>, P extends keyof T, Q extends string, Z extends keyof T, W extends Z[]> = {
-  _tag: "unaryRender",
-  value: P
-} | {
-  _tag: "directRender",
-  value: P,
-  renderer: (v: T[P]) => string
-} | {
-  _tag: "multipleRender",
-  value: Q,
-  dependencies: W,
-  renderer: (v: { [P in (W extends (infer Z2)[] ? Z2 : never)]: T[P] }) => string
-}
-
-export function unaryRender<T extends StringOnlyRecord<any>, P extends keyof T>(key: P): Renderable<T, keyof T, any, any, any> {
+export function rancor(strings: TemplateStringsArray, ...values: any[]): RancorTemplate {
   return {
-    _tag: "unaryRender",
-    value: key
+    rawFragments: Array.from(strings),
+    liveFragments: values,
+    _tag: "rancor"
   }
 }
 
-export function directRender<T extends StringOnlyRecord<any>, P extends keyof T>(key: P, renderer: (v: T[P]) => string) {
-  return {
-    _tag: "directRender",
-    value: key,
-    renderer
+export const r = rancor;
+
+export type RawHtml = string;
+
+export type Component<W> = (w: W) => RawHtml | RancorTemplate | (RawHtml | RancorTemplate)[];
+
+export type ChildFragment<T, V, W> = {
+  refiner: (t: T) => V,
+  transformer: (v: V) => W,
+  component: Component<W>,
+  _tag: "child"
+}
+
+export function ChildFragment<T, V = T, W = V>(
+  {
+    refiner,
+    transformer,
+    component
+  }: {
+    refiner: (t: T) => V,
+    transformer: (v: V) => W,
+    component: Component<W>
+  }): ChildFragment<T, V, W> {
+    const val = {
+      refiner,
+      transformer,
+      component,
+      _tag: "child"
+    };
+
+    return val as typeof val extends ChildFragment<T, infer V, infer W> ? ChildFragment<T, V, W> : never;
+}
+
+export function identity<T>(t: T) {
+  return t;
+}
+
+export const c = ChildFragment;
+
+function getChildIfChild(val: any): undefined | ChildFragment<any, any, any> {
+  if (val === null || val === undefined) {
+    return undefined;
+  } else if (val["_tag"] === "child") {
+    return val as ChildFragment<any, any, any>;
+  } else {
+    return undefined;
   }
 }
 
-export function r<T extends StringOnlyRecord<any>, P extends keyof T>(key: P, renderer?: (v: T[P]) => string) {
-  return renderer ? directRender(key, renderer) : unaryRender(key);
-}
-
-export function multipleRender<T extends StringOnlyRecord<any>, P extends keyof T, >(key: P, renderer: (v: T[P]) => string) {
-  return {
-    _tag: "directRender",
-    value: key,
-    renderer
+function getRancorIfRancor(val: any): undefined | RancorTemplate {
+  if (val === null || val === undefined) {
+    return undefined;
+  } else if (val["_tag"] === "rancor") {
+    return val as RancorTemplate;
+  } else {
+    return undefined;
   }
 }
 
-export function render<T>(
-  component: Component<T>,
-  data: T
-  ) {
-  const {
-    root,
-    renderers
-  } = component;
+function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any) {
+  const asChild = getChildIfChild(fragment);
+  if (!!asChild) {
+    const {
+      component,
+      refiner,
+      transformer
+    } = asChild;
 
-  const renderedArray: string[] = [];
-  const {components, strings} = root;
+    /**
+     * TODO this step is used for dependency detection so this function needs a hook to register the dependency
+     */
+    const refined = refiner(data);
+    const transformed = transformer(refined);
+    return render(component, transformed);
+  } else {
+    return fragment;
+  }
+}
 
-  strings.forEach((str, index) => {
-    renderedArray.push(str);
-    if (index < components.length) {
-      const componentName = components[index];
-      const renderResult = renderers[componentName](data[componentName]);
-      if (Array.isArray(renderResult)) {
-        for (let index in renderResult) {
-          const result = renderResult[index];
-          renderedArray.push(
-            typeof result === "string" ? result : render(
-              result,
-              data[componentName][index]
-            )
-          );
-        }
-      } else {
-        renderedArray.push(
-          typeof renderResult === "string" ? renderResult : render(
-            renderResult,
-            data[componentName]
-          )
-        );
-      }
-    }
-  })
+function renderTemplate(template: RawHtml | RancorTemplate, data: any): string {
+  const asRancor = getRancorIfRancor(template);
+  if (!!asRancor) {
+    const {
+      liveFragments,
+      rawFragments
+    } = asRancor;
 
-  return renderedArray.join("");
+    return rawFragments.map((val, i) => val + (i in liveFragments
+      ? renderFragment(liveFragments[i], data)
+      : ""
+    )).join("")
+  } else {
+    return template as string;
+  }
+}
+
+function render<T>(component: Component<T>, data: T): RawHtml {
+  const renderedTemplate = component(data);
+
+  return Array.isArray(renderedTemplate)
+    ? renderedTemplate.map(
+      template => renderTemplate(
+        template,
+        data
+      )
+    ).join("")
+    : renderTemplate(renderedTemplate, data);
+}
+
+export function makeRenderer<W>(rootComponent: Component<W>, data: W): () => RawHtml {
+  /** TODO This is where we hook dependencies for change tracking, such that subsequent executions of the returned function try to re-render only what has changed */
+  return () => {
+    return render(
+      rootComponent,
+      data
+    );
+  }
 }

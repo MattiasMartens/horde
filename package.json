@@ -1,5 +1,6 @@
 {
   "name": "rancor",
+  "version": "1.0.0-pre-alpha",
   "dependencies": {
     "ts-node": "^8.4.1",
     "typescript": "^3.6.3"

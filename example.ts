@@ -1,5 +1,4 @@
-import {swarm} from "./tag";
-import {Component, render} from "./component";
+import {Component, makeRenderer, rancor, r, c, identity} from "./component";
 
 const testData = {
   name: "Mattias Martens",
@@ -21,20 +20,12 @@ const testData = {
 
 type TestData = typeof testData;
 
-const testComponent: Component<TestData> = ({
-  root: swarm<TestData>`<p>My name is ${"name"} and my ideas are these:</p><ul>${"ideas"}</ul>`,
-  renderers: {
-    name: (name: string) => `<strong>${name}</strong>`,
-    ideas: (arr) => arr.map(() => ideaComponent)
-  }
-});
+const testComponent: Component<TestData> = ({name}: TestData) => r`<p>My name is ${name}</p><ul>${c({
+  refiner: ({ideas}: TestData) => ({ideas}),
+  transformer: identity,
+  component: ({ideas}) => ideas.map(
+    ({name}) => r`<li>${name}</li>`
+  )
+})}</ul>`;
 
-const ideaComponent: Component<TestData["ideas"][0]> = {
-  root: swarm<TestData["ideas"][0]>`<li>${"name"}<br />${"doYouLikeMyIdea"}</li>`,
-  renderers: {
-    name: (name) => name,
-    doYouLikeMyIdea: (doYouLikeMyIdea)
-  }
-}
-
-console.log(render(testComponent, testData));
+console.log(makeRenderer(testComponent, testData)());
