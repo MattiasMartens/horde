@@ -2,6 +2,8 @@ import {
   v4
 } from "uuid";
 
+export const rancorTag = Symbol("Rancor Tag");
+
 import {
   parse,
   HTMLElement,
@@ -12,14 +14,14 @@ import {
 export type RancorTemplate = {
   rawFragments: RawHtml[],
   liveFragments: any[],
-  _tag: "rancor"
+  [rancorTag]: "rancor"
 }
 
 export function rancor(strings: TemplateStringsArray, ...values: any[]): RancorTemplate {
   return {
     rawFragments: Array.from(strings),
     liveFragments: values,
-    _tag: "rancor"
+    [rancorTag]: "rancor"
   }
 }
 
@@ -33,8 +35,40 @@ export type ChildFragment<T, V = T, W = V> = {
   refiner?: (t: T) => V,
   transformer?: (v: V) => W,
   component: Component<W>,
-  _tag: "child"
+  [rancorTag]: "child"
 }
+
+export type IterableFragment<T, X, W, V = T> = {
+  refiner?: (t: T) => V,
+  iterable: (v: V) => Iterable<X>,
+  transformer: ( arg: {iterated: { current: X, index: number }, data: V} ) => W,
+  component: Component<X>
+}
+
+export function IterableFragment<T, X, W, V = T>(
+  {
+    refiner,
+    transformer,
+    component,
+    iterable
+  }: {
+    refiner?: (t: T) => V,
+    iterable: (v: V) => Iterable<X>,
+    transformer: ( arg: {iterated: { current: X, index: number }, data: V} ) => W,
+    component: Component<X>
+  }): IterableFragment<T, X, W, V> {
+    const val = {
+      refiner,
+      transformer,
+      component,
+      iterable,
+      [rancorTag]: "iterable"
+    };
+
+    return val as IterableFragment<T, X, W, V>;
+}
+
+export const i = IterableFragment;
 
 export function ChildFragment<T, V = T, W = V>(
   {
@@ -50,7 +84,7 @@ export function ChildFragment<T, V = T, W = V>(
       refiner,
       transformer,
       component,
-      _tag: "child"
+      [rancorTag]: "child"
     };
 
     return val as typeof val extends ChildFragment<T, infer V, infer W> ? ChildFragment<T, V, W> : never;
@@ -69,11 +103,21 @@ export function identity<T>(t: T) {
 
 export const c = ChildFragment;
 
-function getChildIfChild(val: any): undefined | ChildFragment<any, any, any> {
+function getChildIfChild(val: any): undefined | ChildFragment<any> {
   if (val === null || val === undefined) {
     return undefined;
-  } else if (val["_tag"] === "child") {
+  } else if (val[rancorTag] === "child") {
     return val as ChildFragment<any, any, any>;
+  } else {
+    return undefined;
+  }
+}
+
+function getIterableIfIterable(val: any): undefined | IterableFragment<any, any, any> {
+  if (val === null || val === undefined) {
+    return undefined;
+  } else if (val[rancorTag] === "iterable") {
+    return val as IterableFragment<any, any, any>;
   } else {
     return undefined;
   }
@@ -82,7 +126,7 @@ function getChildIfChild(val: any): undefined | ChildFragment<any, any, any> {
 function getRancorIfRancor(val: any): undefined | RancorTemplate {
   if (val === null || val === undefined) {
     return undefined;
-  } else if (val["_tag"] === "rancor") {
+  } else if (val[rancorTag] === "rancor") {
     return val as RancorTemplate;
   } else {
     return undefined;
@@ -107,17 +151,49 @@ function renderChildFragment({
   });
 }
 
-/**
- * 
- * Render a piece of a Rancor template, which may itself be a reactive child component.
- */
-function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any, output: (subTree: HTMLElement, insertionPoint: Node) => void) {
-  const asChild = getChildIfChild(fragment);
-  if (!!asChild) {
-    return renderChildFragment(asChild, data, output);
-  } else {
-    return String(fragment);
+function renderIterableFragment({
+  component,
+  refiner,
+  transformer,
+  iterable
+}: IterableFragment<any, any, any>, data: any, patch: (subTree: HTMLElement, insertionPoint: Node) => void) {
+  /**
+   * TODO the "refiner" function was to be used for dependency injection but may no longer be necessary
+   */
+  const refined = refiner ? refiner(data) : data;
+
+  const list = iterable(refined);
+
+  let index = 0;
+  const iterator = list[Symbol.iterator]();
+  const renderedComponents: {
+    output: HTMLElement;
+    graph?: ComponentGraph<any>;
+}[] = [];
+  let iterated: IteratorResult<any>;
+
+  while (iterated = iterator.next()) {    
+    const {
+      value,
+      done
+    } = iterated;
+
+    if (done) {
+      break;
+    }
+
+    renderedComponents.push(
+      render({
+        component,
+        data: transformer({iterated: { current: value, index }, data}),
+        patch
+      })
+    )
+
+    index++;
   }
+
+  return renderedComponents;
 }
 
 function asSkeletonDom({liveFragments, rawFragments}: RancorTemplate) {
@@ -138,6 +214,13 @@ function insertLiveFragment(documentFragment: HTMLElement, uuid: UUID, toInsert:
   const index = parent.childNodes.findIndex(n => (n as HTMLElement).id === uuid);
 
   parent.childNodes[index] = toInsert;
+}
+
+function insertLiveFragments(documentFragment: HTMLElement, uuid: UUID, toInsert: Node[]) {
+  const insertionPoint = documentFragment.querySelector("#" + uuid);
+  const parent = insertionPoint.parentNode;
+  const index = parent.childNodes.findIndex(n => (n as HTMLElement).id === uuid);
+  parent.childNodes.splice(index, 1, ...toInsert);
 }
 
 /**
@@ -173,11 +256,19 @@ function render<T>({component, data, patch}: RenderContext<T>): {
             output
           } = renderChildFragment(liveFragment, data, patch);
 
-          insertLiveFragment(fragment, uuid, output);
-        } else {
-          const node = new TextNode(String(liveFragment));
-          insertLiveFragment(fragment, uuid, node);
+          return void insertLiveFragment(fragment, uuid, output);
         }
+        
+        const iterableFragment = getIterableIfIterable(liveFragment);
+
+        if (!!iterableFragment) {
+          const items = renderIterableFragment(liveFragment, data, patch);
+
+          return void insertLiveFragments(fragment, uuid, items.map(({output}) => output))
+        }
+
+        const node = new TextNode(String(liveFragment));
+        insertLiveFragment(fragment, uuid, node);
       }
     );
 

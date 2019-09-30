@@ -1,4 +1,4 @@
-import {Component, makeRenderer, rancor, r, c, identity, Mutator, } from "./component";
+import {Component, makeRenderer, rancor, r, c, identity, Mutator, i, } from "./component";
 
 const testData = {
   name: "Mattias Martens",
@@ -30,11 +30,11 @@ setInterval(mutator.tick, 4000);
 
 type TestData = typeof testData;
 
-const testComponent: Component<TestData> = ({name, ticker}: TestData) => r`<p>My name is ${name} #${ticker}</p><ul>${c({
+const testComponent: Component<TestData> = ({name, ticker}: TestData) => r`<p>My name is ${name} #${ticker}</p><ul>${i({
   refiner: ({ideas}: TestData) => ({ideas}),
-  component: ({ideas}) => ideas.map(
-    ({name}) => r`<li>${name}</li>`
-  )[0]
+  iterable: ({ideas}) => ideas,
+  transformer: ({iterated}) => iterated.current,
+  component: ({name}) => r`<li>${name}</li>`
 })}</ul>`;
 
 const {
