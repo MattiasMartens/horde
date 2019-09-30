@@ -1,3 +1,6 @@
+import {
+  v4
+} from "uuid";
 
 export type RancorTemplate = {
   rawFragments: RawHtml[],
@@ -79,7 +82,7 @@ function getRancorIfRancor(val: any): undefined | RancorTemplate {
   }
 }
 
-function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any, output: (rawHtml: RawHtml) => void) {
+function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any, output: (rawHtml: RawHtml) => void, path: UUID[]) {
   const asChild = getChildIfChild(fragment);
   if (!!asChild) {
     const {
@@ -93,18 +96,14 @@ function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any,
      */
     const refined = refiner ? refiner(data) : data;
 
-    const subscribers = globalMutationSubscribers.get(data) || new Set();
-    subscribers.add(output);
-    globalMutationSubscribers.set(data, subscribers);
-
     const transformed = transformer ? transformer(refined) : data;
-    return render(component, transformed, output);
+    return render(component, transformed, output, path);
   } else {
     return String(fragment);
   }
 }
 
-function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>, data: any, output: (rawHtml: RawHtml) => void): string {
+function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>, data: any, output: (rawHtml: RawHtml) => void, path: UUID[]): string {
   const asRancor = getRancorIfRancor(template);
   if (!!asRancor) {
     const {
@@ -113,30 +112,45 @@ function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>,
     } = asRancor;
 
     return rawFragments.map((val, i) => val + (i in liveFragments
-      ? renderFragment(liveFragments[i], data, output)
+      ? renderFragment(liveFragments[i], data, output, path)
       : ""
     )).join("")
+  } else {
+    return renderFragment(template, data, output, path);
   }
-
-  return renderFragment(template, data, output);
 }
 
-function render<T>(component: Component<T>, data: T, output: (rawHtml: RawHtml) => void): RawHtml {
+const paths = new WeakMap<UUID[], UUID[]>();
+
+function registerPath(pathSoFar: UUID[]) {
+  const extendedPath = [...pathSoFar, v4()];
+  paths.set(pathSoFar, extendedPath);
+  return extendedPath;
+}
+
+function render<T>(component: Component<T>, data: T, output: (rawHtml: RawHtml) => void, path: UUID[]): RawHtml {
+  const rememberedPath = paths.get(path);
+
+  const myPath = rememberedPath || registerPath(path);
+
   const renderedTemplate = component(data);
 
-  const subscribers = globalMutationSubscribers.get(data) || new Set();
-  subscribers.add(output);
+  const subscribers = globalMutationSubscribers.get(data) || new Map();
+  if (!subscribers.has(myPath)) {
+    subscribers.set(myPath, () => output(render(component, data, output, path)));
+  }
   globalMutationSubscribers.set(data, subscribers);
 
   return Array.isArray(renderedTemplate)
-    ? renderedTemplate.map(
-      template => renderTemplate(
-        template,
-        data,
-        output
-      )
-    ).join("")
-    : renderTemplate(renderedTemplate, data, output);
+  ? renderedTemplate.map(
+    template => renderTemplate(
+      template,
+      data,
+      output,
+      myPath
+    )
+  ).join("")
+  : renderTemplate(renderedTemplate, data, output, myPath);
 }
 
 export type Mutators<W> = {
@@ -157,7 +171,9 @@ function mapValues<T, V>(
   return ret;
 }
 
-const globalMutationSubscribers = new WeakMap<any, Set<((a: any) => void)>>();
+type UUID = string;
+
+const globalMutationSubscribers = new WeakMap<any, Map<UUID[], ((a: any) => void)>>();
 
 export function Mutator<W>(w: W, mutators: Mutators<W>) {
   const wrapped = mapValues(
@@ -166,14 +182,13 @@ export function Mutator<W>(w: W, mutators: Mutators<W>) {
       return (i: any) => {
         const oldValue = w;
         const newValue = mutator(w, i);
-        const subscribers = globalMutationSubscribers.get(oldValue) || new Set();
+        const subscribers = globalMutationSubscribers.get(oldValue) || new Map();
         subscribers.forEach(fn => fn(newValue));
 
         if (newValue !== oldValue) {
           globalMutationSubscribers.delete(oldValue);
           globalMutationSubscribers.set(newValue, subscribers);
         }
-
       }
     }
   )
@@ -184,10 +199,13 @@ export function Mutator<W>(w: W, mutators: Mutators<W>) {
 }
 
 export function makeRenderer<W>(rootComponent: Component<W>, data: W, output: (rawHtml: RawHtml) => void): () => void {
+  const rootComponentUuid = v4();
+
   const renderFn = () => render(
     rootComponent,
     data,
-    () => output(renderFn())
+    output,
+    [rootComponentUuid]
   );
 
   output(renderFn());

@@ -2,7 +2,9 @@
   "name": "rancor",
   "version": "1.0.0-pre-alpha",
   "dependencies": {
+    "@types/uuid": "^3.4.5",
     "ts-node": "^8.4.1",
-    "typescript": "^3.6.3"
+    "typescript": "^3.6.3",
+    "uuid": "^3.3.3"
   }
 }
