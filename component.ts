@@ -2,6 +2,13 @@ import {
   v4
 } from "uuid";
 
+import {
+  parse,
+  HTMLElement,
+  Node,
+  TextNode
+} from "node-html-parser";
+
 export type RancorTemplate = {
   rawFragments: RawHtml[],
   liveFragments: any[],
@@ -20,7 +27,7 @@ export const r = rancor;
 
 export type RawHtml = string;
 
-export type Component<W> = (w: W) => RawHtml | RancorTemplate | (RawHtml | RancorTemplate)[];
+export type Component<W> = (w: W) => HTMLElement | RancorTemplate;
 
 export type ChildFragment<T, V = T, W = V> = {
   refiner?: (t: T) => V,
@@ -82,75 +89,102 @@ function getRancorIfRancor(val: any): undefined | RancorTemplate {
   }
 }
 
-function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any, output: (rawHtml: RawHtml) => void, path: UUID[]) {
+function renderChildFragment({
+  component,
+  refiner,
+  transformer
+}: ChildFragment<any, any, any>, data: any, patch: (subTree: HTMLElement, insertionPoint: Node) => void) {
+  /**
+   * TODO the "refiner" function was to be used for dependency injection but may no longer be necessary
+   */
+  const refined = refiner ? refiner(data) : data;
+
+  const transformed = transformer ? transformer(refined) : data;
+  return render({
+    component,
+    data: transformed,
+    patch
+  });
+}
+
+/**
+ * 
+ * Render a piece of a Rancor template, which may itself be a reactive child component.
+ */
+function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any, output: (subTree: HTMLElement, insertionPoint: Node) => void) {
   const asChild = getChildIfChild(fragment);
   if (!!asChild) {
-    const {
-      component,
-      refiner,
-      transformer
-    } = asChild;
-
-    /**
-     * TODO the "refiner" function was to be used for dependency injection but may no longer be necessary
-     */
-    const refined = refiner ? refiner(data) : data;
-
-    const transformed = transformer ? transformer(refined) : data;
-    return render(component, transformed, output, path);
+    return renderChildFragment(asChild, data, output);
   } else {
     return String(fragment);
   }
 }
 
-function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>, data: any, output: (rawHtml: RawHtml) => void, path: UUID[]): string {
-  const asRancor = getRancorIfRancor(template);
-  if (!!asRancor) {
-    const {
-      liveFragments,
-      rawFragments
-    } = asRancor;
+function asSkeletonDom({liveFragments, rawFragments}: RancorTemplate) {
+  const uuids = liveFragments.map(() => v4());
 
-    return rawFragments.map((val, i) => val + (i in liveFragments
-      ? renderFragment(liveFragments[i], data, output, path)
-      : ""
-    )).join("")
-  } else {
-    return renderFragment(template, data, output, path);
-  }
+  const skeletonString = rawFragments.map((str, i) => str + ((i in liveFragments) ? `<rib id="${uuids[i]}" />` : "")).join("");
+  const fragment = parse(skeletonString) as any as HTMLElement;
+  return {
+    fragment,
+    uuids
+  };
 }
 
-const paths = new WeakMap<UUID[], UUID[]>();
+function insertLiveFragment(documentFragment: HTMLElement, uuid: UUID, toInsert: Node) {
+  const insertionPoint = documentFragment.querySelector("#" + uuid);
+  const parent = insertionPoint.parentNode;
 
-function registerPath(pathSoFar: UUID[]) {
-  const extendedPath = [...pathSoFar, v4()];
-  paths.set(pathSoFar, extendedPath);
-  return extendedPath;
+  const index = parent.childNodes.findIndex(n => (n as HTMLElement).id === uuid);
+
+  parent.childNodes[index] = toInsert;
 }
 
-function render<T>(component: Component<T>, data: T, output: (rawHtml: RawHtml) => void, path: UUID[]): RawHtml {
-  const rememberedPath = paths.get(path);
-
-  const myPath = rememberedPath || registerPath(path);
-
+/**
+ * Render a component and track its place in the tree and its dependencies.
+ */
+function render<T>({component, data, patch}: RenderContext<T>): {
+  output: HTMLElement,
+  graph?: ComponentGraph<T>
+} {
   const renderedTemplate = component(data);
 
-  const subscribers = globalMutationSubscribers.get(data) || new Map();
-  if (!subscribers.has(myPath)) {
-    subscribers.set(myPath, () => output(render(component, data, output, path)));
-  }
-  globalMutationSubscribers.set(data, subscribers);
+  if (renderedTemplate instanceof HTMLElement) {
+    return {
+      output: renderedTemplate
+    }
+  } else {
+    const rancor = renderedTemplate;
+    const {liveFragments} = rancor;
 
-  return Array.isArray(renderedTemplate)
-  ? renderedTemplate.map(
-    template => renderTemplate(
-      template,
-      data,
-      output,
-      myPath
-    )
-  ).join("")
-  : renderTemplate(renderedTemplate, data, output, myPath);
+    /**
+     * TODO can we cache this so it is not executed on subsequent runs?
+     */
+    const {fragment, uuids} = asSkeletonDom(rancor);
+
+    liveFragments.forEach(
+      (liveFragment, i) => {
+        const uuid = uuids[i];
+        const childFragment = getChildIfChild(liveFragment);
+
+        if (!!childFragment) {
+          const {
+            graph,
+            output
+          } = renderChildFragment(liveFragment, data, patch);
+
+          insertLiveFragment(fragment, uuid, output);
+        } else {
+          const node = new TextNode(String(liveFragment));
+          insertLiveFragment(fragment, uuid, node);
+        }
+      }
+    );
+
+    return {
+      output: fragment
+    }
+  }
 }
 
 export type Mutators<W> = {
@@ -198,18 +232,44 @@ export function Mutator<W>(w: W, mutators: Mutators<W>) {
   }
 }
 
-export function makeRenderer<W>(rootComponent: Component<W>, data: W, output: (rawHtml: RawHtml) => void): () => void {
+type ComponentGraph<W> = {
+  dependencies: any[],
+  _uuid: UUID,
+  children: ComponentGraph<any>[],
+  rerender: (newData: W) => void
+}
+
+
+type RenderContext<W> = {
+  component: Component<W>,
+  data: W,
+  patch: (subTree: HTMLElement, insertionPoint: Node | undefined) => void
+}
+
+/**
+ * Given a root component and its data object, return a complete DOM tree.
+ * Then, each time a mutation requires a re-render of some subset of that tree, call the provided function with a DOM sub-tree and insertion point.
+ */
+export function makeRenderer<W>(rootComponent: Component<W>, data: W, patch: (subTree: HTMLElement, insertionPoint: Node) => void) {
   const rootComponentUuid = v4();
 
-  const renderFn = () => render(
-    rootComponent,
+  const componentGraph = {
+    dependencies: [data],
+    _uuid: rootComponentUuid,
+    children: []
+  };
+
+  const renderFn = () => render({
+    component: rootComponent,
     data,
-    output,
-    [rootComponentUuid]
-  );
+    patch
+  });
 
-  output(renderFn());
+  const domTree: HTMLElement = renderFn().output;
 
-  /** TODO function that cleans up and destroys this tree */
-  return () => {};
+  return {
+    domTree,
+    /** TODO function that cleans up and destroys this tree */
+    cleanup: () => {}
+  }
 }

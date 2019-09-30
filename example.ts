@@ -34,7 +34,12 @@ const testComponent: Component<TestData> = ({name, ticker}: TestData) => r`<p>My
   refiner: ({ideas}: TestData) => ({ideas}),
   component: ({ideas}) => ideas.map(
     ({name}) => r`<li>${name}</li>`
-  )
+  )[0]
 })}</ul>`;
 
-makeRenderer(testComponent, testData, console.log);
+const {
+  domTree,
+  cleanup
+} = makeRenderer(testComponent, testData, console.log);
+
+console.log(domTree.structuredText);
