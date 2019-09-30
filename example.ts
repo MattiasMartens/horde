@@ -31,4 +31,4 @@ const testComponent: Component<TestData> = ({name, ticker}: TestData) => r`<p>My
   )
 })}</ul>`;
 
-console.log(makeRenderer(testComponent, testData)());
+makeRenderer(testComponent, testData, console.log);

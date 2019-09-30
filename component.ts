@@ -79,7 +79,7 @@ function getRancorIfRancor(val: any): undefined | RancorTemplate {
   }
 }
 
-function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any) {
+function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any, output: (rawHtml: RawHtml) => void) {
   const asChild = getChildIfChild(fragment);
   if (!!asChild) {
     const {
@@ -89,17 +89,22 @@ function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any)
     } = asChild;
 
     /**
-     * TODO this step is used for dependency detection so this function needs a hook to register the dependency
+     * TODO the "refiner" function was to be used for dependency injection but may no longer be necessary
      */
     const refined = refiner ? refiner(data) : data;
+
+    const subscribers = globalMutationSubscribers.get(data) || [];
+    subscribers.push(output);
+    globalMutationSubscribers.set(data, subscribers);
+
     const transformed = transformer ? transformer(refined) : data;
-    return render(component, transformed);
+    return render(component, transformed, output);
   } else {
     return String(fragment);
   }
 }
 
-function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>, data: any): string {
+function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>, data: any, output: (rawHtml: RawHtml) => void): string {
   const asRancor = getRancorIfRancor(template);
   if (!!asRancor) {
     const {
@@ -108,43 +113,83 @@ function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>,
     } = asRancor;
 
     return rawFragments.map((val, i) => val + (i in liveFragments
-      ? renderFragment(liveFragments[i], data)
+      ? renderFragment(liveFragments[i], data, output)
       : ""
     )).join("")
   }
 
-  return renderFragment(template, data);
+  return renderFragment(template, data, output);
 }
 
-function render<T>(component: Component<T>, data: T): RawHtml {
+function render<T>(component: Component<T>, data: T, output: (rawHtml: RawHtml) => void): RawHtml {
   const renderedTemplate = component(data);
 
   return Array.isArray(renderedTemplate)
     ? renderedTemplate.map(
       template => renderTemplate(
         template,
-        data
+        data,
+        output
       )
     ).join("")
-    : renderTemplate(renderedTemplate, data);
+    : renderTemplate(renderedTemplate, data, output);
 }
 
 type Mutators<W> = {
-  [key: string]: (w: W) => W
+  [key: string]: (w: W, i?: any) => W
 };
 
-function Mutators<W>(mutators: {
-  [key: string]: (w: W) => W
-}) {
-  return mutators;
+type ValueMapped<T extends {[key: string]: V}, V, U> = {
+  [P in keyof T]: U
+};
+
+function mapValues<T, V>(
+  object: { [key: string]: T },
+  fn: (value: T, key: string) => V
+): { [key: string]: V } {
+  const ret: { [key: string]: V } = {};
+
+  Object.keys(object).forEach(key => (ret[key] = fn(object[key], key)));
+  return ret;
 }
 
-export function makeRenderer<W>(rootComponent: Component<W>, data: W, mutators: Mutators<W>): () => RawHtml {
-  /** TODO This is where we hook dependencies for change tracking, such that subsequent executions of the returned function try to re-render only what has changed */
-  return () => {
-    return render(
-      rootComponent,
-      data
-    );
+const globalMutationSubscribers = new WeakMap<any, ((a: any) => void)[]>();
+
+function Mutators<W>(w: W, mutators: Mutators<W>) {
+  const wrapped = mapValues(
+    mutators,
+    mutator => {
+      return (i: any) => {
+        const oldValue = w;
+        const newValue = mutator(w, i);
+        const subscribers = globalMutationSubscribers.get(oldValue) || [];
+        subscribers.forEach(fn => fn(newValue));
+
+        if (newValue !== oldValue) {
+          globalMutationSubscribers.delete(oldValue);
+          globalMutationSubscribers.set(newValue, subscribers);
+        }
+
+      }
+    }
+  )
+
+  return wrapped as {
+    [P in keyof typeof mutators]: typeof mutators[P] extends (w: W, i: infer I) => W ? (i: I) => void : () => void
   }
+}
+
+export function makeRenderer<W>(rootComponent: Component<W>, data: W, output: (rawHtml: RawHtml) => void): () => void {
+  const renderFn = () => render(
+    rootComponent,
+    data,
+    renderFn
+  );
+
+  const rerenderAll = renderFn;
+
+  output(renderFn());
+
+  /** TODO function that cleans up and destroys this tree */
+  return () => {};
 }
