@@ -2,6 +2,7 @@ import {Component, makeRenderer, rancor, r, c, identity} from "./component";
 
 const testData = {
   name: "Mattias Martens",
+  ticker: 0,
   ideas: [
     {
       name: "A bowling ball that shoots lasers",
@@ -15,14 +16,16 @@ const testData = {
       isLikeable: true,
       doYouLikeMyIdea: null
     }
-  ]
+  ],
+  inc: () => testData.ticker++
 }
+
+testData.inc();
 
 type TestData = typeof testData;
 
-const testComponent: Component<TestData> = ({name}: TestData) => r`<p>My name is ${name}</p><ul>${c({
+const testComponent: Component<TestData> = ({name, ticker}: TestData) => r`<p>My name is ${name} #${ticker}</p><ul>${c({
   refiner: ({ideas}: TestData) => ({ideas}),
-  transformer: identity,
   component: ({ideas}) => ideas.map(
     ({name}) => r`<li>${name}</li>`
   )

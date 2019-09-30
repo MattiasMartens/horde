@@ -19,9 +19,9 @@ export type RawHtml = string;
 
 export type Component<W> = (w: W) => RawHtml | RancorTemplate | (RawHtml | RancorTemplate)[];
 
-export type ChildFragment<T, V, W> = {
-  refiner: (t: T) => V,
-  transformer: (v: V) => W,
+export type ChildFragment<T, V = T, W = V> = {
+  refiner?: (t: T) => V,
+  transformer?: (v: V) => W,
   component: Component<W>,
   _tag: "child"
 }
@@ -32,8 +32,8 @@ export function ChildFragment<T, V = T, W = V>(
     transformer,
     component
   }: {
-    refiner: (t: T) => V,
-    transformer: (v: V) => W,
+    refiner?: (t: T) => V,
+    transformer?: (v: V) => W,
     component: Component<W>
   }): ChildFragment<T, V, W> {
     const val = {
@@ -44,6 +44,13 @@ export function ChildFragment<T, V = T, W = V>(
     };
 
     return val as typeof val extends ChildFragment<T, infer V, infer W> ? ChildFragment<T, V, W> : never;
+}
+
+export type ListenerFragment = {
+  element: RancorTemplate | RawHtml,
+  listeners: {
+    [event: string]: (e: Event) => void // TODO instead emit a traceable mutation event?
+  }
 }
 
 export function identity<T>(t: T) {
@@ -84,15 +91,15 @@ function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any)
     /**
      * TODO this step is used for dependency detection so this function needs a hook to register the dependency
      */
-    const refined = refiner(data);
-    const transformed = transformer(refined);
+    const refined = refiner ? refiner(data) : data;
+    const transformed = transformer ? transformer(refined) : data;
     return render(component, transformed);
   } else {
-    return fragment;
+    return String(fragment);
   }
 }
 
-function renderTemplate(template: RawHtml | RancorTemplate, data: any): string {
+function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>, data: any): string {
   const asRancor = getRancorIfRancor(template);
   if (!!asRancor) {
     const {
@@ -104,9 +111,9 @@ function renderTemplate(template: RawHtml | RancorTemplate, data: any): string {
       ? renderFragment(liveFragments[i], data)
       : ""
     )).join("")
-  } else {
-    return template as string;
   }
+
+  return renderFragment(template, data);
 }
 
 function render<T>(component: Component<T>, data: T): RawHtml {
@@ -122,7 +129,17 @@ function render<T>(component: Component<T>, data: T): RawHtml {
     : renderTemplate(renderedTemplate, data);
 }
 
-export function makeRenderer<W>(rootComponent: Component<W>, data: W): () => RawHtml {
+type Mutators<W> = {
+  [key: string]: (w: W) => W
+};
+
+function Mutators<W>(mutators: {
+  [key: string]: (w: W) => W
+}) {
+  return mutators;
+}
+
+export function makeRenderer<W>(rootComponent: Component<W>, data: W, mutators: Mutators<W>): () => RawHtml {
   /** TODO This is where we hook dependencies for change tracking, such that subsequent executions of the returned function try to re-render only what has changed */
   return () => {
     return render(
