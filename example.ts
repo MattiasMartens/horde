@@ -1,4 +1,4 @@
-import {Component, makeRenderer, rancor, r, c, identity} from "./component";
+import {Component, makeRenderer, rancor, r, c, identity, Mutator, } from "./component";
 
 const testData = {
   name: "Mattias Martens",
@@ -16,11 +16,17 @@ const testData = {
       isLikeable: true,
       doYouLikeMyIdea: null
     }
-  ],
-  inc: () => testData.ticker++
+  ]
 }
 
-testData.inc();
+const mutator = Mutator(testData, {
+  tick: testData => {
+    testData.ticker++;
+    return testData;
+  }
+})
+
+setInterval(mutator.tick, 4000);
 
 type TestData = typeof testData;
 

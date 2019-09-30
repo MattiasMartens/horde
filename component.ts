@@ -93,8 +93,8 @@ function renderFragment(fragment: any | ChildFragment<any, any, any>, data: any,
      */
     const refined = refiner ? refiner(data) : data;
 
-    const subscribers = globalMutationSubscribers.get(data) || [];
-    subscribers.push(output);
+    const subscribers = globalMutationSubscribers.get(data) || new Set();
+    subscribers.add(output);
     globalMutationSubscribers.set(data, subscribers);
 
     const transformed = transformer ? transformer(refined) : data;
@@ -124,6 +124,10 @@ function renderTemplate(template: RawHtml | RancorTemplate | ChildFragment<any>,
 function render<T>(component: Component<T>, data: T, output: (rawHtml: RawHtml) => void): RawHtml {
   const renderedTemplate = component(data);
 
+  const subscribers = globalMutationSubscribers.get(data) || new Set();
+  subscribers.add(output);
+  globalMutationSubscribers.set(data, subscribers);
+
   return Array.isArray(renderedTemplate)
     ? renderedTemplate.map(
       template => renderTemplate(
@@ -135,7 +139,7 @@ function render<T>(component: Component<T>, data: T, output: (rawHtml: RawHtml) 
     : renderTemplate(renderedTemplate, data, output);
 }
 
-type Mutators<W> = {
+export type Mutators<W> = {
   [key: string]: (w: W, i?: any) => W
 };
 
@@ -153,16 +157,16 @@ function mapValues<T, V>(
   return ret;
 }
 
-const globalMutationSubscribers = new WeakMap<any, ((a: any) => void)[]>();
+const globalMutationSubscribers = new WeakMap<any, Set<((a: any) => void)>>();
 
-function Mutators<W>(w: W, mutators: Mutators<W>) {
+export function Mutator<W>(w: W, mutators: Mutators<W>) {
   const wrapped = mapValues(
     mutators,
     mutator => {
       return (i: any) => {
         const oldValue = w;
         const newValue = mutator(w, i);
-        const subscribers = globalMutationSubscribers.get(oldValue) || [];
+        const subscribers = globalMutationSubscribers.get(oldValue) || new Set();
         subscribers.forEach(fn => fn(newValue));
 
         if (newValue !== oldValue) {
@@ -183,10 +187,8 @@ export function makeRenderer<W>(rootComponent: Component<W>, data: W, output: (r
   const renderFn = () => render(
     rootComponent,
     data,
-    renderFn
+    () => output(renderFn())
   );
-
-  const rerenderAll = renderFn;
 
   output(renderFn());
 
