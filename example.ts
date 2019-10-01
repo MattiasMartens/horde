@@ -1,4 +1,5 @@
-import {Component, makeRenderer, rancor, r, c, identity, Mutator, i, } from "./component";
+import {Component, makeRenderer, c, Mutator, i, r } from "./lib";
+
 
 const testData = {
   name: "Mattias Martens",
