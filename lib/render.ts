@@ -3,7 +3,7 @@ import {
   Component
 } from "./component";
 import { v4 } from "uuid";
-import { IterableFragment, ChildFragment, getIterableIfIterable, getChildIfChild } from "./fragment";
+import { IterableFragment, ChildFragment, getIterableIfIterable, getChildIfChild, ListenerFragment } from "./fragment";
 
 import {
   rancorTag
@@ -116,7 +116,7 @@ function asSkeletonDom({liveFragments, rawFragments}: RancorTemplate) {
   };
 }
 
-function insertLiveFragment(documentFragment: HTMLElement, uuid: UUID, toInsert: Node) {
+function insertLiveHtmlFragment(documentFragment: HTMLElement, uuid: UUID, toInsert: Node) {
   const insertionPoint = documentFragment.querySelector("#" + uuid);
   const parent = insertionPoint.parentNode;
 
@@ -125,11 +125,49 @@ function insertLiveFragment(documentFragment: HTMLElement, uuid: UUID, toInsert:
   parent.childNodes[index] = toInsert;
 }
 
-function insertLiveFragments(documentFragment: HTMLElement, uuid: UUID, toInsert: Node[]) {
+function insertLiveHtmlFragments(documentFragment: HTMLElement, uuid: UUID, toInsert: Node[]) {
   const insertionPoint = documentFragment.querySelector("#" + uuid);
   const parent = insertionPoint.parentNode;
   const index = parent.childNodes.findIndex(n => (n as HTMLElement).id === uuid);
   parent.childNodes.splice(index, 1, ...toInsert);
+}
+
+function renderRancorTemplate<W>(rancorTemplate: RancorTemplate, data: W, patch: (subTree: HTMLElement, insertionPoint: Node) => void) {
+  const {liveFragments} = rancorTemplate;
+
+  /**
+    * TODO can we cache this so it is not executed on subsequent runs?
+    */
+  const {fragment, uuids} = asSkeletonDom(rancorTemplate);
+
+  liveFragments.forEach(
+    (liveFragment, i) => {
+      const uuid = uuids[i];
+      const childFragment = getChildIfChild(liveFragment);
+
+      if (!!childFragment) {
+        const {
+          graph,
+          output
+        } = renderChildFragment(liveFragment, data, patch);
+
+        return void insertLiveHtmlFragment(fragment, uuid, output);
+      }
+      
+      const iterableFragment = getIterableIfIterable(liveFragment);
+
+      if (!!iterableFragment) {
+        const items = renderIterableFragment(liveFragment, data, patch);
+
+        return void insertLiveHtmlFragments(fragment, uuid, items.map(({output}) => output))
+      }
+
+      const node = new TextNode(String(liveFragment));
+      insertLiveHtmlFragment(fragment, uuid, node);
+    }
+  );
+
+  return fragment;
 }
 
 /**
@@ -146,40 +184,7 @@ function render<T>({component, data, patch}: RenderContext<T>): {
       output: renderedTemplate
     }
   } else {
-    const rancor = renderedTemplate;
-    const {liveFragments} = rancor;
-
-    /**
-     * TODO can we cache this so it is not executed on subsequent runs?
-     */
-    const {fragment, uuids} = asSkeletonDom(rancor);
-
-    liveFragments.forEach(
-      (liveFragment, i) => {
-        const uuid = uuids[i];
-        const childFragment = getChildIfChild(liveFragment);
-
-        if (!!childFragment) {
-          const {
-            graph,
-            output
-          } = renderChildFragment(liveFragment, data, patch);
-
-          return void insertLiveFragment(fragment, uuid, output);
-        }
-        
-        const iterableFragment = getIterableIfIterable(liveFragment);
-
-        if (!!iterableFragment) {
-          const items = renderIterableFragment(liveFragment, data, patch);
-
-          return void insertLiveFragments(fragment, uuid, items.map(({output}) => output))
-        }
-
-        const node = new TextNode(String(liveFragment));
-        insertLiveFragment(fragment, uuid, node);
-      }
-    );
+    const fragment = renderRancorTemplate(renderedTemplate, data, patch);
 
     return {
       output: fragment
@@ -248,5 +253,31 @@ function renderIterableFragment({
   }
 
   return renderedComponents;
+}
+
+const listenerMap = new Map<UUID, ListenerFragment["listeners"]>();
+
+function renderListenerFragment(
+  {
+    element,
+    listeners
+  }: ListenerFragment,
+  data: any,
+  patch: (subTree: HTMLElement, insertionPoint: Node) => void
+) {
+  const htmlElement = typeof element === "string"
+    ? parse(element) as any as HTMLElement
+    : renderRancorTemplate(
+      element,
+      data,
+      patch
+    );
+  
+  for (let [event, listener] of Object.entries(listeners)) {
+    htmlElement.id = v4();
+
+    // TODO Realize this map on the real DOM in an update step
+    listenerMap.set(htmlElement.id, listeners);
+  }
 }
 
