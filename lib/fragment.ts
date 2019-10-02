@@ -61,15 +61,34 @@ export function ChildFragment<T, V = T, W = V>(
     return val as typeof val extends ChildFragment<T, infer V, infer W> ? ChildFragment<T, V, W> : never;
 }
 
+export const c = ChildFragment;
+
 export type ListenerFragment = {
   element: RancorTemplate | RawHtml,
   listeners: {
     [event: string]: (e: Event) => void // TODO instead emit a traceable mutation event?
-  }
+  },
+  [rancorTag]: "listener"
 }
 
-export const c = ChildFragment;
+export function ListenerFragment<T, V = T, W = V>(
+  {
+    element,
+    listeners
+  }: {
+    element: RancorTemplate | RawHtml,
+    listeners: {
+      [event: string]: (e: Event) => void // TODO instead emit a traceable mutation event?
+    }
+  }): ListenerFragment {
+    return {
+      element,
+      listeners,
+      [rancorTag]: "listener"
+    };
+}
 
+export const l = ListenerFragment;
 
 export function getChildIfChild(val: any): undefined | ChildFragment<any> {
   if (val === null || val === undefined) {
