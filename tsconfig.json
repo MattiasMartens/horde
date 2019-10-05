@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "lib": ["es6", "dom"],
-    "keyofStringsOnly": true
+    "lib": ["es2018", "dom"],
+    "keyofStringsOnly": true,
+    "outDir": "public/dist",
+    "strictNullChecks": true
   }
 }

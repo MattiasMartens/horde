@@ -1,21 +1,16 @@
 
 import {
-  Component
+  Component, RawHtml
 } from "./component";
 import { v4 } from "uuid";
 import { IterableFragment, ChildFragment, getIterableIfIterable, getChildIfChild, ListenerFragment } from "./fragment";
 
 import {
-  rancorTag
-} from "./provide";
+  parse
+} from "./parse";
 
-import {
-  parse,
-  HTMLElement,
-  Node,
-  TextNode
-} from "node-html-parser";
 import { RancorTemplate } from "./tag";
+import { notNullOrUndefined } from "../types/utils";
 
 export type Mutators<W> = {
   [key: string]: (w: W, i?: any) => W
@@ -104,32 +99,80 @@ export function makeRenderer<W>(rootComponent: Component<W>, data: W, patch: (su
   }
 }
 
-
 function asSkeletonDom({liveFragments, rawFragments}: RancorTemplate) {
   const uuids = liveFragments.map(() => v4());
 
   const skeletonString = rawFragments.map((str, i) => str + ((i in liveFragments) ? `<rib id="${uuids[i]}" />` : "")).join("");
-  const fragment = parse(skeletonString) as any as HTMLElement;
+  const fragment = parse(skeletonString);
   return {
     fragment,
     uuids
   };
 }
 
-function insertLiveHtmlFragment(documentFragment: HTMLElement, uuid: UUID, toInsert: Node) {
-  const insertionPoint = documentFragment.querySelector("#" + uuid);
-  const parent = insertionPoint.parentNode;
+function findIndex<T extends Node>(nl: NodeListOf<T>, pred: (t: T) => boolean) {
+  for (let i = 0; i < nl.length; i++) {
+    const el = nl[i];
+    if (pred(el)) {
+      return i;
+    }
+  }
 
-  const index = parent.childNodes.findIndex(n => (n as HTMLElement).id === uuid);
-
-  parent.childNodes[index] = toInsert;
+  return -1;
 }
 
-function insertLiveHtmlFragments(documentFragment: HTMLElement, uuid: UUID, toInsert: Node[]) {
-  const insertionPoint = documentFragment.querySelector("#" + uuid);
-  const parent = insertionPoint.parentNode;
-  const index = parent.childNodes.findIndex(n => (n as HTMLElement).id === uuid);
-  parent.childNodes.splice(index, 1, ...toInsert);
+function splice<T extends Node>(nl: NodeListOf<T>, index: number, toDelete: number, toInsert: T[]) {
+  const toReinsert: T[] = [];
+
+  let currentNode: T | undefined;
+  let deleteCursor = index + toDelete - 1;
+  while (!!(currentNode = nl[deleteCursor++])) {
+    toReinsert.push(currentNode);
+  }
+
+  let cursor = index;
+  for (let insertee of toInsert) {
+    nl[cursor++] = insertee;
+  }
+
+  for (let insertee of toReinsert) {
+    nl[cursor++] = insertee;
+  }
+
+  nl.length = cursor;
+}
+
+function insertLiveHtmlFragment(documentFragment: HTMLElement, uuid: UUID, toInsert: ChildNode) {
+  const insertionPoint = notNullOrUndefined(
+    documentFragment.querySelector("#" + uuid),
+    `Element not found with ID ${uuid}`
+  );
+
+  const parent = notNullOrUndefined(
+    insertionPoint.parentNode
+  );
+
+  const index = findIndex(parent.childNodes, n => (n as HTMLElement).id === uuid);
+
+  parent.replaceChild(toInsert, parent.childNodes[index]);
+}
+
+function insertLiveHtmlFragments(documentFragment: HTMLElement, uuid: UUID, toInsert: ChildNode[]) {
+  const insertionPoint = notNullOrUndefined(
+    documentFragment.querySelector("#" + uuid),
+    `Element not found with ID ${uuid}`
+  );
+  const parent = notNullOrUndefined(
+    insertionPoint.parentNode
+  );
+  const index = findIndex(parent.childNodes, n => (n as HTMLElement).id === uuid);
+
+  splice(
+    parent.childNodes,
+    index,
+    1,
+    toInsert
+  );
 }
 
 function renderRancorTemplate<W>(rancorTemplate: RancorTemplate, data: W, patch: (subTree: HTMLElement, insertionPoint: Node) => void) {
@@ -162,7 +205,8 @@ function renderRancorTemplate<W>(rancorTemplate: RancorTemplate, data: W, patch:
         return void insertLiveHtmlFragments(fragment, uuid, items.map(({output}) => output))
       }
 
-      const node = new TextNode(String(liveFragment));
+
+      const node = document.createTextNode(String(liveFragment));
       insertLiveHtmlFragment(fragment, uuid, node);
     }
   );

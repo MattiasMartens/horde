@@ -1,4 +1,5 @@
 import {Component, makeRenderer, c, Mutator, i, r } from "./lib";
+import { mount } from "./lib/mount";
 
 
 const testData = {
@@ -43,4 +44,4 @@ const {
   cleanup
 } = makeRenderer(testComponent, testData, console.log);
 
-console.log(domTree.structuredText);
+mount(domTree, "#app")
