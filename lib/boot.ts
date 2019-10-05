@@ -3,7 +3,7 @@ import { Component } from "./component";
 
 export function boot<T>(
   rootDataObject: T,
-  template: RancorTemplate
+  component: Component<T>
 ): {
   rootElements: NodeListOf<Node>,
   shutdown: () => void,
@@ -18,7 +18,7 @@ export function boot<T>(
   }
 } {
   return {
-    rootElements: document.createElement("div").childNodes,
+    rootElements: window.document.createElement("div").childNodes,
     shutdown: () => {},
     renderContext: {
       parseCache: new Map(),

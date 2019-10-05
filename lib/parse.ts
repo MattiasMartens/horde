@@ -1,7 +1,7 @@
 type RawHtml = string;
 
 export function parse(rawHtml: RawHtml) {
-  const parseNode = document.createElement("fragment");
+  const parseNode = window.document.createElement("fragment");
   parseNode.innerHTML = rawHtml;
   return parseNode.childNodes;
 }
