@@ -11,6 +11,18 @@ export type RancorTemplate = {
   [rancorTag]: "rancor"
 }
 
+type UUID = string;
+
+export type ParsedRancorTemplate = {
+  nodes: NodeListOf<Node>,
+  ribs: Map<UUID, any>,
+  attributes: Map<UUID, {
+    name: string,
+    value: string
+  }[]>,
+  [rancorTag]: "parsedRancor"
+}
+
 export function rancor(strings: TemplateStringsArray, ...values: any[]): RancorTemplate {
   return {
     rawFragments: Array.from(strings),

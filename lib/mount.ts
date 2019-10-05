@@ -16,4 +16,3 @@ export function mount(domTree: HTMLElement, selector: string) {
     throw new Error(`Element not found with selector ${selector}`);
   }
 }
-
