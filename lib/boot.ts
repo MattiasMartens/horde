@@ -5,7 +5,7 @@ export function boot<T>(
   rootDataObject: T,
   template: RancorTemplate
 ): {
-  rootElement: HTMLElement,
+  rootElements: NodeListOf<Node>,
   shutdown: () => void,
   renderContext: {
     parseCache: Map<TemplateStringsArray, ParsedRancorTemplate>,
@@ -18,7 +18,7 @@ export function boot<T>(
   }
 } {
   return {
-    rootElement: new HTMLElement(),
+    rootElements: document.createElement("div").childNodes,
     shutdown: () => {},
     renderContext: {
       parseCache: new Map(),

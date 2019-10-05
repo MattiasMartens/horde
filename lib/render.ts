@@ -99,17 +99,6 @@ export function makeRenderer<W>(rootComponent: Component<W>, data: W, patch: (su
   }
 }
 
-function asSkeletonDom({liveFragments, rawFragments}: RancorTemplate) {
-  const uuids = liveFragments.map(() => v4());
-
-  const skeletonString = rawFragments.map((str, i) => str + ((i in liveFragments) ? `<rib id="${uuids[i]}" />` : "")).join("");
-  const fragment = parse(skeletonString);
-  return {
-    fragment,
-    uuids
-  };
-}
-
 function findIndex<T extends Node>(nl: NodeListOf<T>, pred: (t: T) => boolean) {
   for (let i = 0; i < nl.length; i++) {
     const el = nl[i];

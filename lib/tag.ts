@@ -16,10 +16,10 @@ type UUID = string;
 export type ParsedRancorTemplate = {
   nodes: NodeListOf<Node>,
   ribs: Map<UUID, any>,
-  attributes: Map<UUID, {
+  /** attributes: Map<UUID, {
     name: string,
     value: string
-  }[]>,
+  }[]>, */
   [rancorTag]: "parsedRancor"
 }
 

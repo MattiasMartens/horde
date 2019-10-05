@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "lib": ["es2018", "dom"],
+    "lib": ["es6", "dom"],
+    "downlevelIteration": true,
     "keyofStringsOnly": true,
     "outDir": "public/dist",
     "strictNullChecks": true
