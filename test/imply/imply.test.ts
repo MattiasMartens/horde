@@ -58,7 +58,7 @@ test("Flowpoints should compose", () => {
 
 test("Mutating flowpoint with m() should trigger recomputation", () => {
   const arrayF = identify([1,2,3]);
-  const sumF = imply([arrayF], arr => arr.reduce((acc, next) => acc + next, 0));
+  const sumF = imply(arrayF, arr => arr.reduce((acc, next) => acc + next, 0));
 
   assertEqual(sumF.i, 6);
   arrayF.m(arr => arr[0] = 0);

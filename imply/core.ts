@@ -17,21 +17,23 @@ export type Identified<V> = {
 export type Flowpoint<V> = Implied<V> | Identified<V>;
 
 
-export function imply<V>(
-  dependencies: Flowpoint<any>[],
+export function imply<V, T>(
+  dependencies: Flowpoint<any>[] | Flowpoint<T>,
   transformer: (...arg: any) => V
  ): Implied<V> {
+  const dependenciesAsArr = "_kind" in dependencies ? [dependencies] : dependencies;
+
   const flowpoint = {
     l: []
   } as any as Implied<V>;
 
   const recalculate = () => {
-    flowpoint.i = transformer(...dependencies.map(({i}) => i));
+    flowpoint.i = transformer(...dependenciesAsArr.map(({i}) => i));
 
     flowpoint.l.forEach(fn => fn(flowpoint.i));
     return flowpoint.i;
   }
-  dependencies.forEach(dependency => dependency.l.push(recalculate))
+  dependenciesAsArr.forEach(dependency => dependency.l.push(recalculate))
 
   return Object.assign(flowpoint, {
     _i: recalculate(),
