@@ -2,7 +2,7 @@ import {
   reconcileFirst,
   reconcileEntryInto,
   reconcileAppend
-} from "big-m"
+} from "big-m";
 
 // reactiveValue: dependencies --> result of calculation
 // fragment: reactiveValue --> DOM information (elements or attributes)
@@ -35,4 +35,8 @@ export function reactive<T extends object, V, R>(dependencyRegistry: DependencyR
   }
 
   return computer();
+}
+
+export function mutate<T, K, V>() {
+
 }

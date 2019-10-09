@@ -30,5 +30,12 @@ export function assert(fn: (() => boolean) | boolean, errorMessage?: string | ((
   }
 }
 
+export function assertEqual(a: any, b: any) {
+  assert(
+    a === b,
+    `Expected ${a} to equal ${b}`
+  );
+}
+
 // Thanks to Gerrit0 from Stack Overflow https://stackoverflow.com/a/49889856/5063469
 export type Awaited<T> = T extends Promise<infer U> ? U : T;

@@ -18,5 +18,10 @@
   },
   "scripts": {
     "test": "jest"
-  }
+  },
+  "description": "Brutal frontend framework",
+  "main": "index.ts",
+  "repository": "git@github.com:MattiasMartens/horde.git",
+  "author": "Mattias Martens <mattiasofmartens@gmail.com>",
+  "license": "MIT"
 }

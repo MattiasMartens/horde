@@ -1,9 +1,12 @@
 {
   "compilerOptions": {
     "lib": ["es6", "dom"],
+    "target": "es6",
     "downlevelIteration": true,
     "keyofStringsOnly": true,
     "outDir": "public/dist",
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true
   }
 }
