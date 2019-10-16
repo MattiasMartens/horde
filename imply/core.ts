@@ -1,17 +1,21 @@
+import {
+  subscribable, Subscribable
+} from "./subscribe"
+
 export type Implied<V> = {
   _i: V,
   i: V,
   _kind: "imply",
-  recalculate: () => V,
-  l: ((newValue: V) => void)[]
+  subscribable: Subscribable<V>
+  recalculate: () => V
 }
 
 export type Identified<V> = {
   i: V,
   _kind: "identify",
   _i: V,
-  l: ((newValue: V) => void)[],
-  m: (fn: (oldValue: V) => void) => void,
+  subscribable: Subscribable<V>,
+  mutate: (fn: (oldValue: V) => void) => void,
 }
 
 export type Flowpoint<V> = Implied<V> | Identified<V>;
@@ -24,16 +28,16 @@ export function imply<V, T>(
   const dependenciesAsArr = "_kind" in dependencies ? [dependencies] : dependencies;
 
   const flowpoint = {
-    l: []
+    subscribable: subscribable(),
   } as any as Implied<V>;
 
   const recalculate = () => {
-    flowpoint.i = transformer(...dependenciesAsArr.map(({i}) => i));
+    flowpoint.i = transformer(...dependenciesAsArr.map(({i}) => i))
 
-    flowpoint.l.forEach(fn => fn(flowpoint.i));
+    flowpoint.subscribable.emit(flowpoint.i)
     return flowpoint.i;
   }
-  dependenciesAsArr.forEach(dependency => dependency.l.push(recalculate))
+  dependenciesAsArr.forEach(dependency => dependency.subscribable.subscribe(recalculate))
 
   return Object.assign(flowpoint, {
     _i: recalculate(),
@@ -54,13 +58,13 @@ export function identify<V>(value: V): Identified<V> {
     _i: value,
     set i(this: Identified<V>, val: V) {
       this._i = val;
-      this.l.forEach(fn => fn(val));
+      this.subscribable.emit(val)
     },
     get i() {
       return this._i;
     },
-    l: [],
-    m(fn) {
+    subscribable: subscribable<V>(),
+    mutate(fn) {
       fn(this.i);
       this.i = this.i;
     }

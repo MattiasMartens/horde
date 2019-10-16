@@ -7,63 +7,10 @@ import { IterableFragment, ChildFragment, getIterableIfIterable, getChildIfChild
 
 import {
   parse
-} from "./parse";
+} from "../lib2/parse";
 
 import { RancorTemplate } from "./tag";
 import { notNullOrUndefined } from "../types/utils";
-
-export type Mutators<W> = {
-  [key: string]: (w: W, i?: any) => W
-};
-
-type ValueMapped<T extends {[key: string]: V}, V, U> = {
-  [P in keyof T]: U
-};
-
-function mapValues<T, V>(
-  object: { [key: string]: T },
-  fn: (value: T, key: string) => V
-): { [key: string]: V } {
-  const ret: { [key: string]: V } = {};
-
-  Object.keys(object).forEach(key => (ret[key] = fn(object[key], key)));
-  return ret;
-}
-
-type UUID = string;
-
-const globalMutationSubscribers = new WeakMap<any, Map<UUID[], ((a: any) => void)>>();
-
-export function Mutator<W>(w: W, mutators: Mutators<W>) {
-  const wrapped = mapValues(
-    mutators,
-    mutator => {
-      return (i: any) => {
-        const oldValue = w;
-        const newValue = mutator(w, i);
-        const subscribers = globalMutationSubscribers.get(oldValue) || new Map();
-        subscribers.forEach(fn => fn(newValue));
-
-        if (newValue !== oldValue) {
-          globalMutationSubscribers.delete(oldValue);
-          globalMutationSubscribers.set(newValue, subscribers);
-        }
-      }
-    }
-  )
-
-  return wrapped as {
-    [P in keyof typeof mutators]: typeof mutators[P] extends (w: W, i: infer I) => W ? (i: I) => void : () => void
-  }
-}
-
-type ComponentGraph<W> = {
-  dependencies: any[],
-  _uuid: UUID,
-  children: ComponentGraph<any>[],
-  rerender: (newData: W) => void
-}
-
 
 type RenderContext<W> = {
   component: Component<W>,
@@ -313,4 +260,3 @@ function renderListenerFragment(
     listenerMap.set(htmlElement.id, listeners);
   }
 }
-

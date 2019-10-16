@@ -9,6 +9,4 @@ test("boot() should return an HTML element", () => {
   const {
     rootElements
   } = boot({}, () => rancor``);
-
-  console.log(rootElements);
 });

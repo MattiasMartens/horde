@@ -1,9 +1,8 @@
+import {
+  Flowpoint
+} from "../imply";
 import { RancorTemplate } from "./tag";
 
 export type RawHtml = string;
 
-export type Component<W> = (w: W) => HTMLElement | RancorTemplate;
-
-export function identity<T>(t: T) {
-  return t;
-}
+export type Component<W> = (w: Flowpoint<W>) => HTMLElement | RancorTemplate;
