@@ -7,7 +7,6 @@ test("Should be able to render simple, static HTML", () => {
     i: htmlElements
   } = render(`<p>I am a test paragraph</p>`)
 
-  debugger;
   assertEqual((htmlElements[0] as HTMLElement).textContent, "I am a test paragraph")
 });
 
@@ -16,7 +15,7 @@ test("Should be able to render HTML with dynamic content based on flowpoints", d
 
   const flowpoint = render(
     imply(
-      [mutableNumber],
+      mutableNumber,
       n => `<p>I am the number ${n}</p>`
     )
   )
@@ -32,3 +31,27 @@ test("Should be able to render HTML with dynamic content based on flowpoints", d
 
   mutableNumber.i = 3
 })
+
+test("Should be able to render embedded templates", done => {
+  const mutableNumber = identify(2)
+
+  const flowpoint = render(
+    imply(
+      mutableNumber,
+      n => `<p>I am the number ${n}</p>`
+    )
+  )
+
+  const { i: htmlElements } = flowpoint
+
+  assertEqual((htmlElements[0] as HTMLElement).textContent, "I am the number 2")
+
+  flowpoint.subscribable.subscribe(htmlElements2 => {
+    assertEqual((htmlElements2[0] as HTMLElement).textContent, "I am the number 3")
+    done()
+  })
+
+  mutableNumber.i = 3
+})
+
+

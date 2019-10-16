@@ -20,19 +20,40 @@ export type Identified<V> = {
 
 export type Flowpoint<V> = Implied<V> | Identified<V>;
 
+export type ValueMapped<T extends Record<string, Flowpoint<any>>> = {
+  [K in keyof T]: T[K]["i"]
+}
 
-export function imply<V, T>(
-  dependencies: Flowpoint<any>[] | Flowpoint<T>,
-  transformer: (...arg: any) => V
+function mapObjValues<T, V>(obj: Record<string, T>, fn: (v: T, k: string) => V): {
+  [K in keyof T]: V
+} {
+  const out = {}
+  for (let k in obj) {
+    out[k] = fn(obj[k], k)
+  }
+  return out as { [K in keyof T]: V; }
+}
+
+export function imply<V, D extends  Record<string, Flowpoint<any>> | Flowpoint<any>>(
+  dependencies: D,
+  transformer: (arg: D extends Flowpoint<infer T> ? T : D extends Record<string, Flowpoint<any>> ? ValueMapped<D> : never) => V
  ): Implied<V> {
-  const dependenciesAsArr = "_kind" in dependencies ? [dependencies] : dependencies;
+  const dependencyType = "_kind" in dependencies ? "unary" : "named"
+  const dependenciesAsArr = dependencyType === "unary" ? [dependencies] : Object.values(dependencies)
 
   const flowpoint = {
     subscribable: subscribable(),
-  } as any as Implied<V>;
+  } as any as Implied<V>
 
   const recalculate = () => {
-    flowpoint.i = transformer(...dependenciesAsArr.map(({i}) => i))
+    flowpoint.i = transformer(
+     dependencyType === "unary"
+      ? dependencies.i
+      : mapObjValues(
+        dependencies,
+        ({i}) => i
+      )
+    )
 
     flowpoint.subscribable.emit(flowpoint.i)
     return flowpoint.i;

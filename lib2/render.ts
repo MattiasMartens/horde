@@ -7,8 +7,8 @@ export function render(template: string | NodeListOf<ChildNode> | Flowpoint<Node
   } else if ("_kind" in template) {
     if (typeof template.i === "string") {
       return imply(
-        [template],
-        str => parse(str)
+        template,
+        str => parse(str as string)
       )
     } else {
       return template as Flowpoint<NodeListOf<ChildNode>>
